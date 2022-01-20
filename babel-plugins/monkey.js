@@ -39,7 +39,6 @@ function randomChildNodes(parentNodeType){
     // loop through parent node's possible childeren
         // select random valid node for that child
 
-
     return Object.keys(defs.NODE_FIELDS[parentNodeType]).map(
         child => {
 
