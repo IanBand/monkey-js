@@ -4,6 +4,7 @@ idk i'm bored lol
 
 - https://babeljs.io/docs/en/babel-types, why is this so hard to find on google?
 - https://astexplorer.net/
+- https://lihautan.com/manipulating-ast-with-javascript/
 
 need this: 
 
