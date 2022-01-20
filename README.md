@@ -11,12 +11,6 @@ need this:
 
 ```npm install --save-dev babel-cli```
 
-
-generate the grammar: 
-
-```./node_modules/.bin/babel index.ts --out-file grammar.js```
-
-
 run it: 
 
 ```./node_modules/.bin/babel empty.js --out-file random.js```

@@ -1,6 +1,6 @@
 {
     "plugins": [
-        ["./generate-grammar.js",{
+        ["./babel-plugins/monkey.js",{
                 // pass args to the custom plugin
             }
         ]
