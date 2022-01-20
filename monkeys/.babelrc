@@ -1,0 +1,8 @@
+{
+    "plugins": [
+        ["./monkey.js",{
+                // pass args to the custom plugin
+            }
+        ]
+    ]
+}

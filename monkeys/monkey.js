@@ -4,6 +4,8 @@ module.exports = function infiniteJSMonkey({types: t}) {
             // https://babeljs.io/docs/en/babel-types
             Program(path, state){
 
+                console.log('monkeys!');
+
                 //console.log(Object.keys(t).filter(key => key == 'nullLiteral'));
 
                 // https://github.com/babel/babel/blob/main/packages/babel-types/src/ast-types/generated/index.ts this is just str8 up the emca grammar
