@@ -1,4 +1,5 @@
-var defs = require("@babel/types/lib/definitions/index.js");
+var _t = require("@babel/types/lib/definitions/index.js");
+//console.log(_t);
 var seedrandom = require('seedrandom');
 var rng = seedrandom('hello.');
 
@@ -6,10 +7,9 @@ module.exports = function infiniteJSMonkey({types: t}) {
     return {
         visitor: {
             Program(path, state){
-
-                console.log('monkey!');
-                console.log(defs.NODE_FIELDS.VariableDeclaration);
-                console.log(randomChildNodes("VariableDeclaration", t));
+                console.log('monkey!', t);
+                console.log(_t.NODE_FIELDS.VariableDeclaration);
+                console.log(randomParametersForNode("VariableDeclaration", t));
 
 
                 let rootVarName = "us_toast";
@@ -41,23 +41,64 @@ module.exports = function infiniteJSMonkey({types: t}) {
     };
 }
 
-function randomChildNodes(parentNodeType, t){
+// for now, have computed always be false, and all the methods be Expressions
+// TODO: convert this into an engine that can implement this logic
+const customTypes = {
+    ClassMethod: {
+      key: "if computed then `Expression` else `Identifier | Literal`",
+    },
+    Identifier: {
+      name: "`string`",
+    },
+    MemberExpression: {
+      property: "if computed then `Expression` else `Identifier`",
+    },
+    ObjectMethod: {
+      key: "if computed then `Expression` else `Identifier | Literal`",
+    },
+    ObjectProperty: {
+      key: "if computed then `Expression` else `Identifier | Literal`",
+    },
+    ClassPrivateMethod: {
+      computed: "'false'",
+    },
+    ClassPrivateProperty: {
+      computed: "'false'",
+    },
+};
+
+/**
+ * randomParametersForNode()
+ * 
+ * this function is based on https://github.com/babel/babel/blob/main/packages/babel-types/scripts/generators/docs.js#L71
+ * which generates the webpage https://babeljs.io/docs/en/babel-types
+ * 
+ * @param {String} key name of node type
+ * @param {Object} t node generator object
+ * @returns {[parameter]} list of random parameters for node
+ */
+function randomParametersForNode(key, t){
 
     // essentially, the flow of this function can be thought of as the following:
     // loop through parent node's possible childeren (instead of a loop its a map())
     //      select random valid node for that child
 
-    //...may have an issue with the args not being applied in the right order
-    return Object.keys(defs.NODE_FIELDS[parentNodeType]).map(
-        childNodeName => {
-
-            const child = defs.NODE_FIELDS[parentNodeType][childNodeName];
+    
+    return Object.keys(_t.NODE_FIELDS[key])
+    .sort( (fieldA, fieldB) => {
+        const indexA = _t.BUILDER_KEYS[key].indexOf(fieldA);
+        const indexB = _t.BUILDER_KEYS[key].indexOf(fieldB);
+        if (indexA === indexB) return fieldA < fieldB ? -1 : 1;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+    })
+    .map( (field) => {
+            const defaultValue = _t.NODE_FIELDS[key][field].default;
+            const validator = _t.NODE_FIELDS[key][field].validate;
 
             
 
-
-
-            // useful? https://babeljs.io/docs/en/babel-types#typescript
 
             // if child is optional, do we include it?
             if(child.optional){
@@ -98,17 +139,17 @@ function randomChildNodes(parentNodeType, t){
 
                 const randomValidNodeType = child.validate.oneOfNodeTypes[Math.floor(rng() * child.validate.oneOfNodeTypes.length)];
 
-                const nodeCreateFunc = randomValidNodeType[0].toLowerCase() + randomValidNodeType.slice(1)
+                const nodeCreateFunc = randomValidNodeType.charAt(0).toLowerCase() + randomValidNodeType.slice(1)
                 /*
                 if(!t[nodeCreateFunc]){
                     return t[child.validate.oneOfNodeTypes[0]];
                 }
                 */
 
-                console.log('returning oneOfNodeTypes', childNodeName);
+                console.log('returning oneOfNodeTypes', field);
                 // could also use .apply() but the spread operator is nicer 
                 //...may have an issue with the args not being applied in the right order
-                return t[nodeCreateFunc](...randomChildNodes(randomValidNodeType)); 
+                return t[nodeCreateFunc](...randomParametersForNode(randomValidNodeType)); 
                 
             }
 
@@ -118,4 +159,77 @@ function randomChildNodes(parentNodeType, t){
 
         }
     )
+}
+
+/**
+ * TODO: port to getRandomValuesFromValidator
+ * based on https://github.com/babel/babel/blob/b05dad7fed07672514fa6d0d21ce4c1e2c3a6f79/packages/babel-types/scripts/utils/stringifyValidator.js#L1
+ * @param {*} validator 
+ * @param {*} nodePrefix 
+ * @returns 
+ */
+function stringifyValidator(validator, nodePrefix) {
+    if (validator === undefined) {
+        return "any";
+    }
+
+    if (validator.each) {
+        return `Array<${stringifyValidator(validator.each, nodePrefix)}>`;
+    }
+
+    if (validator.chainOf) {
+        return stringifyValidator(validator.chainOf[1], nodePrefix);
+    }
+
+    if (validator.oneOf) {
+        return validator.oneOf.map(JSON.stringify).join(" | ");
+    }
+
+    if (validator.oneOfNodeTypes) {
+        return validator.oneOfNodeTypes.map(_ => nodePrefix + _).join(" | ");
+    }
+
+    if (validator.oneOfNodeOrValueTypes) {
+        return validator.oneOfNodeOrValueTypes
+        .map(_ => {
+            return isValueType(_) ? _ : nodePrefix + _;
+        })
+        .join(" | ");
+    }
+
+    if (validator.type) {
+        return validator.type;
+    }
+
+    if (validator.shapeOf) {
+        return (
+        "{ " +
+        Object.keys(validator.shapeOf)
+            .map(shapeKey => {
+            const propertyDefinition = validator.shapeOf[shapeKey];
+            if (propertyDefinition.validate) {
+                const isOptional =
+                propertyDefinition.optional || propertyDefinition.default != null;
+                return (
+                shapeKey +
+                (isOptional ? "?: " : ": ") +
+                stringifyValidator(propertyDefinition.validate)
+                );
+            }
+            return null;
+            })
+            .filter(Boolean)
+            .join(", ") +
+        " }"
+        );
+    }
+    return ["any"];
+}
+  
+/**
+ * Heuristic to decide whether or not the given type is a value type (eg. "null")
+ * or a Node type (eg. "Expression").
+ */
+function isValueType(type) {
+    return type.charAt(0).toLowerCase() === type.charAt(0);
 }
