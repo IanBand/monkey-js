@@ -97,7 +97,35 @@ function randomParametersForNode(key, t){
             const defaultValue = _t.NODE_FIELDS[key][field].default;
             const validator = _t.NODE_FIELDS[key][field].validate;
 
+            const useDefaultValue  = rng() > 0.5;
+            const useOptionalField = rng() > 0.5;
+
             
+            if (customTypes[key] && customTypes[key][field]) {
+                return "customTypeValue";
+            } 
+            else if (validator) {
+                try {
+                    getRandomValuesFromValidator(validator, "")
+                } catch (ex) {
+                    if (ex.code === "UNEXPECTED_VALIDATOR_TYPE") {
+                    console.log(
+                        "Unrecognised validator type for " + key + "." + field
+                    );
+                    console.dir(ex.validator, { depth: 10, colors: true });
+                    }
+                }
+            }
+
+            if(_t.NODE_FIELDS[key][field].optional && useOptionalField){
+
+            }
+            else if((defaultValue !== null) && useDefaultValue){
+
+            }
+            else /* field is required, or we choose to randomly populate it */{
+
+            }
 
 
             // if child is optional, do we include it?
@@ -168,17 +196,17 @@ function randomParametersForNode(key, t){
  * @param {*} nodePrefix 
  * @returns 
  */
-function stringifyValidator(validator, nodePrefix) {
+function getRandomValuesFromValidator(validator, nodePrefix) {
     if (validator === undefined) {
         return "any";
     }
 
     if (validator.each) {
-        return `Array<${stringifyValidator(validator.each, nodePrefix)}>`;
+        return `Array<${getRandomValuesFromValidator(validator.each, nodePrefix)}>`;
     }
 
     if (validator.chainOf) {
-        return stringifyValidator(validator.chainOf[1], nodePrefix);
+        return getRandomValuesFromValidator(validator.chainOf[1], nodePrefix);
     }
 
     if (validator.oneOf) {
@@ -213,7 +241,7 @@ function stringifyValidator(validator, nodePrefix) {
                 return (
                 shapeKey +
                 (isOptional ? "?: " : ": ") +
-                stringifyValidator(propertyDefinition.validate)
+                getRandomValuesFromValidator(propertyDefinition.validate)
                 );
             }
             return null;
