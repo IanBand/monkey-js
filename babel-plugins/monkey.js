@@ -7,10 +7,11 @@ module.exports = function infiniteJSMonkey({types: t}) {
     return {
         visitor: {
             Program(path, state){
-                console.log('monkey!', t);
-                console.log(_t.NODE_FIELDS.VariableDeclaration);
-                console.log(randomParametersForNode("VariableDeclaration", t));
-
+                //console.log(_t.PLACEHOLDERS_ALIAS);
+                //console.log('monkey!', t);
+                console.log(_t.NODE_FIELDS.VariableDeclaration); // VariableDeclaration Identifier
+                //console.log(randomParametersForNode("VariableDeclaration", t));
+                //return;
 
                 let rootVarName = "us_toast";
                 let toast = t.variableDeclaration(
@@ -74,16 +75,22 @@ const customTypes = {
  * which generates the webpage https://babeljs.io/docs/en/babel-types
  * 
  * @param {String} key name of node type
- * @param {Object} t node generator object
+ * @param {Object} builder 
  * @returns {[parameter]} list of random parameters for node
  */
-function randomParametersForNode(key, t){
+function randomParametersForNode(keyOrAlias, builder){
 
     // essentially, the flow of this function can be thought of as the following:
     // loop through parent node's possible childeren (instead of a loop its a map())
     //      select random valid node for that child
 
-    
+    // if the supplied key is an alias, pick a random key with that alias
+    // i.e. if the supplied node type is a class of nodes, pick a random node type that is a member of the class
+    const key = _t.FLIPPED_ALIAS_KEYS[keyOrAlias] ?  
+        _t.FLIPPED_ALIAS_KEYS[keyOrAlias][Math.floor( rng() * _t.FLIPPED_ALIAS_KEYS[keyOrAlias].length)]
+        : 
+        keyOrAlias;
+
     return Object.keys(_t.NODE_FIELDS[key])
     .sort( (fieldA, fieldB) => {
         const indexA = _t.BUILDER_KEYS[key].indexOf(fieldA);
@@ -97,16 +104,20 @@ function randomParametersForNode(key, t){
             const defaultValue = _t.NODE_FIELDS[key][field].default;
             const validator = _t.NODE_FIELDS[key][field].validate;
 
-            const useDefaultValue  = rng() > 0.5;
-            const useOptionalField = rng() > 0.5;
+            const useOptionalField = rng() < 0.5;
 
+            //TODO: if a field is "excluded from builder function", return the string literal "excluded from builder function"
+            if(_t.NODE_FIELDS[key][field].optional && !useOptionalField){
+                return null;
+            }
             
             if (customTypes[key] && customTypes[key][field]) {
-                return "customTypeValue";
+                return "valueForCustomType";
             } 
             else if (validator) {
+                return getRandomValuesFromValidator(validator, "", builder);
+                /*
                 try {
-                    getRandomValuesFromValidator(validator, "")
                 } catch (ex) {
                     if (ex.code === "UNEXPECTED_VALIDATOR_TYPE") {
                     console.log(
@@ -115,78 +126,16 @@ function randomParametersForNode(key, t){
                     console.dir(ex.validator, { depth: 10, colors: true });
                     }
                 }
-            }
-
-            if(_t.NODE_FIELDS[key][field].optional && useOptionalField){
-
-            }
-            else if((defaultValue !== null) && useDefaultValue){
-
-            }
-            else /* field is required, or we choose to randomly populate it */{
-
-            }
-
-
-            // if child is optional, do we include it?
-            if(child.optional){
-                // if(rng() > 0.5) return null; // chance of including an optional node
-                // ignore these common optional nodes: const ignoreList = ['typeAnnotation', 'decorators' ... ];
-                console.log('returning default');
-                return null;
-            }
-            // if child has a default value, do we use it?
-            if(child.default){
-                // if(rng() > 0.5) return child.default; // chance of using a node's default value
-                console.log('returning default');
-                return child.default;
-            }
-
-
-            if(child.validate.type){
-                switch(child.validate.type){
-                    case "string":  return "test";
-                    case "boolean": return false;
-                    default: return "default";
-                }
-            }
-            if(child.validate.oneOf){
-                return child.validate.oneOf[Math.floor(rng() * child.validate.oneOf.length)];
-            }
-            // if child is chainOf (an array of) nodes, how many nodes should we have? random n in [1..10]
-            if(child.validate.chainOf){
-                const chainNumber = Math.floor(rng() * 10);
-                //console.log(child.validate.chainOf)
-                console.log('returning chainOf');
-                return [];
-                
-            }
-            // if child is oneOfNodeTypes, which node type do we choose? a random one
-            if(child.validate.oneOfNodeTypes){
-                //console.log(child.validate.oneOfNodeTypes)
-
-                const randomValidNodeType = child.validate.oneOfNodeTypes[Math.floor(rng() * child.validate.oneOfNodeTypes.length)];
-
-                const nodeCreateFunc = randomValidNodeType.charAt(0).toLowerCase() + randomValidNodeType.slice(1)
-                /*
-                if(!t[nodeCreateFunc]){
-                    return t[child.validate.oneOfNodeTypes[0]];
-                }
                 */
-
-                console.log('returning oneOfNodeTypes', field);
-                // could also use .apply() but the spread operator is nicer 
-                //...may have an issue with the args not being applied in the right order
-                return t[nodeCreateFunc](...randomParametersForNode(randomValidNodeType)); 
-                
             }
 
             // failsafe
-            console.log('failsafe hit', child.validate);
+            console.log('Failsafe hit!', key, field, validator);
             return null;
 
         }
     )
+    .filter(arg => arg !== "excluded from builder function");
 }
 
 /**
@@ -196,39 +145,66 @@ function randomParametersForNode(key, t){
  * @param {*} nodePrefix 
  * @returns 
  */
-function getRandomValuesFromValidator(validator, nodePrefix) {
+function getRandomValuesFromValidator(validator, nodePrefix, builder) {
     if (validator === undefined) {
-        return "any";
+        return null;
     }
 
     if (validator.each) {
-        return `Array<${getRandomValuesFromValidator(validator.each, nodePrefix)}>`;
+        return "each";//`Array<${getRandomValuesFromValidator(validator.each, nodePrefix)}>`;
     }
 
+    // use _t.FLIPPED_ALIAS_KEYS to check if node type is an alias, and pick randomly from the family of aliases
+    // may also need to use _t.PLACEHOLDERS, _t.PLACEHOLDERS_ALIAS, _t.PLACEHOLDERS_FLIPPED_ALIAS
     if (validator.chainOf) {
-        return getRandomValuesFromValidator(validator.chainOf[1], nodePrefix);
+        //console.log(validator.chainOf);
+
+        // assumes validator.chainOf[0].type === "array";
+        return [...Array(Math.ceil(rng() * 2)).keys()].map( _ => getRandomValuesFromValidator(validator.chainOf[1].each, nodePrefix,builder));
     }
 
     if (validator.oneOf) {
-        return validator.oneOf.map(JSON.stringify).join(" | ");
+        // return random choice
+        return validator.oneOf[Math.floor(rng() * validator.oneOf.length)];
     }
 
     if (validator.oneOfNodeTypes) {
-        return validator.oneOfNodeTypes.map(_ => nodePrefix + _).join(" | ");
+
+        console.log(validator.oneOfNodeTypes);
+
+        const randomNodeKey = validator.oneOfNodeTypes[Math.floor(rng() * validator.oneOfNodeTypes.length)];
+
+        const nodeCreateFunc = randomNodeKey.charAt(0).toLowerCase() + randomNodeKey.slice(1);
+
+
+        return t[nodeCreateFunc](...randomParametersForNode(randomNodeKey, builder)); 
     }
 
     if (validator.oneOfNodeOrValueTypes) {
         return validator.oneOfNodeOrValueTypes
+        /*
         .map(_ => {
             return isValueType(_) ? _ : nodePrefix + _;
         })
         .join(" | ");
+        */
     }
 
     if (validator.type) {
-        return validator.type;
+        // need a special case for regex...
+        switch(validator.type){
+            case "string":
+                return "tempID"; //TODO: gen random id or pull from pool of random identifiers or something
+            case "boolean": 
+                return rng() < 0.5;
+            case "number": 
+                return rng();
+            default: 
+                return "default";
+        }
     }
 
+    // looks like this is only used for a TemplateElement node
     if (validator.shapeOf) {
         return (
         "{ " +
