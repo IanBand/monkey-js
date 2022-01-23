@@ -1,7 +1,7 @@
 var _t = require("@babel/types/lib/definitions/index.js");
 //console.log(_t);
 var seedrandom = require('seedrandom');
-var rng = seedrandom('hello.');
+var rng = seedrandom('a'); 
 
 module.exports = function infiniteJSMonkey({types: t}) {
     return {
@@ -9,10 +9,11 @@ module.exports = function infiniteJSMonkey({types: t}) {
             Program(path, state){
                 //console.log(_t.PLACEHOLDERS_ALIAS);
                 //console.log('monkey!', t);
-                console.log(_t.NODE_FIELDS.MetaProperty)
-                console.log(_t.NODE_FIELDS.MetaProperty.meta.validate.chainOf); // VariableDeclaration  MetaProperty
-                console.log(randomParametersForNode("MetaProperty", t));
-                //return;
+                //console.log(_t.NODE_FIELDS.ArrayPattern)
+                //console.log(_t.NODE_FIELDS.ArrayPattern.elements.validate.chainOf)
+                //console.log(); // VariableDeclaration
+                console.log(randomParametersForNode("ClassMethod", t));
+                return;
 
                 let rootVarName = "us_toast";
                 let toast = t.variableDeclaration(
@@ -22,7 +23,7 @@ module.exports = function infiniteJSMonkey({types: t}) {
                 //path.node.body = [toast];
 
                 path.node.body = [
-
+                    //t.variableDeclaration(...randomParametersForNode("VariableDeclaration", t))
                 ]
                 
 
@@ -45,6 +46,7 @@ module.exports = function infiniteJSMonkey({types: t}) {
 
 // for now, have computed always be false, and all the methods be Expressions
 // TODO: convert this into an engine that can implement this logic
+
 const customTypes = {
     ClassMethod: {
       key: "if computed then `Expression` else `Identifier | Literal`",
@@ -62,10 +64,10 @@ const customTypes = {
       key: "if computed then `Expression` else `Identifier | Literal`",
     },
     ClassPrivateMethod: {
-      computed: "'false'",
+      computed: false,//"'false'",
     },
     ClassPrivateProperty: {
-      computed: "'false'",
+      computed: false,//"'false'",
     },
 };
 
@@ -74,16 +76,19 @@ const customTypes = {
  * 
  * this function is based on https://github.com/babel/babel/blob/main/packages/babel-types/scripts/generators/docs.js#L71
  * which generates the webpage https://babeljs.io/docs/en/babel-types
+ * essentially, the flow of this function can be thought of as the following:
+ * loop through parent node's possible childeren (instead of a loop its a map())
+ *      select random valid node for that child
  * 
  * @param {String} key name of node type
  * @param {Object} builder 
  * @returns {[parameter]} list of random parameters for node
  */
-function randomParametersForNode(key, builder){
+function randomParametersForNode(key, builder, DEBUG_NODE_DEPTH = 0){
 
-    // essentially, the flow of this function can be thought of as the following:
-    // loop through parent node's possible childeren (instead of a loop its a map())
-    //      select random valid node for that child
+    if(customTypes[key]){
+        return customTypes[key]
+    }
 
     return Object.keys(_t.NODE_FIELDS[key])
     .sort( (fieldA, fieldB) => {
@@ -98,11 +103,19 @@ function randomParametersForNode(key, builder){
             const defaultValue = _t.NODE_FIELDS[key][field].default;
             const validator = _t.NODE_FIELDS[key][field].validate;
 
+            const fieldIgnoreList = ["decorators"];
+
             const useOptionalField = rng() < 0.5;
 
             
+
+            // this conditional must be the first, dont put one before it          
             if (_t.BUILDER_KEYS[key].indexOf(field) < 0) {
                 return "excluded from builder function";
+            }
+
+            if(fieldIgnoreList.includes(field)){
+                return null;
             }
 
             
@@ -111,25 +124,15 @@ function randomParametersForNode(key, builder){
             }
             
             if (customTypes[key] && customTypes[key][field]) {
-                return "valueForCustomType";
+                return {type: "valueForCustomType"};
             } 
-            else if (validator) {
-                return getRandomValuesFromValidator(validator, builder);
-                /*
-                try {
-                } catch (ex) {
-                    if (ex.code === "UNEXPECTED_VALIDATOR_TYPE") {
-                    console.log(
-                        "Unrecognised validator type for " + key + "." + field
-                    );
-                    console.dir(ex.validator, { depth: 10, colors: true });
-                    }
-                }
-                */
+
+            if (validator) {
+                return getRandomValuesFromValidator(validator, builder, DEBUG_NODE_DEPTH);
             }
 
             // failsafe
-            console.log('Failsafe hit!', key, field, validator);
+            console.error('Failsafe hit!', key, field, validator);
             return null;
 
         }
@@ -138,28 +141,28 @@ function randomParametersForNode(key, builder){
 }
 
 /**
- * TODO: port to getRandomValuesFromValidator
  * based on https://github.com/babel/babel/blob/b05dad7fed07672514fa6d0d21ce4c1e2c3a6f79/packages/babel-types/scripts/utils/stringifyValidator.js#L1
  * @param {*} validator 
  * @param {*} nodePrefix 
  * @returns 
  */
-function getRandomValuesFromValidator(validator, builder) {
+function getRandomValuesFromValidator(validator, builder, DEBUG_NODE_DEPTH) {
+
+    // these naming conventions are dogshit
+    // 'each' means array of args while 'chainOf' means nothing???
+
     if (validator === undefined) {
         return null;
     }
 
     if (validator.each) {
-        return "each";//`Array<${getRandomValuesFromValidator(validator.each)}>`;
+        // this number right below........ here, is the max number of sibling child nodes that will be generated
+        return [...Array(Math.ceil(rng() * 2)).keys()].map( _ => getRandomValuesFromValidator(validator.each, builder, DEBUG_NODE_DEPTH));
     }
 
     if (validator.chainOf) {
-        // may need to use keyOrAliasToRandomKey
-        // honestly what the fuck is the chainOf property
-        // look at what it generates in the docs I guess
-
-        // assumes validator.chainOf[0].type === "array";
-        return [...Array(Math.ceil(rng() * 2)).keys()].map( _ => getRandomValuesFromValidator(validator.chainOf[1].each, builder));
+        // honestly why the fuck is this called the 'chainOf' property
+        return getRandomValuesFromValidator(validator.chainOf[1], builder, DEBUG_NODE_DEPTH);
     }
 
     if (validator.oneOf) {
@@ -175,15 +178,17 @@ function getRandomValuesFromValidator(validator, builder) {
             validator.oneOfNodeTypes[Math.floor(rng() * validator.oneOfNodeTypes.length)]
         );
 
+        // log the AST as its generated
+        console.log(...[...Array(DEBUG_NODE_DEPTH).keys()].map(() => "-"), randomNodeKey);
+
         const nodeCreateFunc = randomNodeKey.charAt(0).toLowerCase() + randomNodeKey.slice(1);
 
-        console.log(nodeCreateFunc)
-
-        return builder[nodeCreateFunc](...randomParametersForNode(randomNodeKey, builder)); 
+        return builder[nodeCreateFunc](...randomParametersForNode(randomNodeKey, builder, DEBUG_NODE_DEPTH + 1)); 
     }
 
+    // TODO: solve this case
     if (validator.oneOfNodeOrValueTypes) {
-        return validator.oneOfNodeOrValueTypes
+        return null; validator.oneOfNodeOrValueTypes
         /*
         .map(_ => {
             return isValueType(_) ? _ : nodePrefix + _;
@@ -206,30 +211,13 @@ function getRandomValuesFromValidator(validator, builder) {
         }
     }
 
-    // looks like this is only used for a TemplateElement node
+    //  looks like this is only used for the TemplateElement node. 
+    // why did they not throw this case in the customTypes array?
     if (validator.shapeOf) {
-        return (
-        "{ " +
-        Object.keys(validator.shapeOf)
-            .map(shapeKey => {
-            const propertyDefinition = validator.shapeOf[shapeKey];
-            if (propertyDefinition.validate) {
-                const isOptional =
-                propertyDefinition.optional || propertyDefinition.default != null;
-                return (
-                shapeKey +
-                (isOptional ? "?: " : ": ") +
-                getRandomValuesFromValidator(propertyDefinition.validate)
-                );
-            }
-            return null;
-            })
-            .filter(Boolean)
-            .join(", ") +
-        " }"
-        );
+        return { raw: "doggin", cooked: "myBrain"};
     }
-    return ["any"];
+
+    console.error("getRandomValuesFromValidator() failed:", validator);
 }
   
 /**
@@ -241,7 +229,18 @@ function isValueType(type) {
 }
 
 function keyOrAliasToRandomKey(keyOrAlias){
+    /*
     return  _t.FLIPPED_ALIAS_KEYS[keyOrAlias] ?  
             _t.FLIPPED_ALIAS_KEYS[keyOrAlias][Math.floor( rng() * _t.FLIPPED_ALIAS_KEYS[keyOrAlias].length)] : 
             keyOrAlias;
+    */
+    if(!_t.FLIPPED_ALIAS_KEYS[keyOrAlias]){
+        return keyOrAlias;
+    }
+    const jsOnlyList = _t.FLIPPED_ALIAS_KEYS[keyOrAlias].filter(key => 
+        key.slice(0,2) !== "TS"  && 
+        key.slice(0,3) !== "JSX"
+    );
+
+    return jsOnlyList[Math.floor(rng() * jsOnlyList.length)];
 }
