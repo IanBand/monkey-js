@@ -9,8 +9,9 @@ module.exports = function infiniteJSMonkey({types: t}) {
             Program(path, state){
                 //console.log(_t.PLACEHOLDERS_ALIAS);
                 //console.log('monkey!', t);
-                console.log(_t.NODE_FIELDS.VariableDeclaration); // VariableDeclaration Identifier
-                //console.log(randomParametersForNode("VariableDeclaration", t));
+                console.log(_t.NODE_FIELDS.MetaProperty)
+                console.log(_t.NODE_FIELDS.MetaProperty.meta.validate.chainOf); // VariableDeclaration  MetaProperty
+                console.log(randomParametersForNode("MetaProperty", t));
                 //return;
 
                 let rootVarName = "us_toast";
@@ -78,18 +79,11 @@ const customTypes = {
  * @param {Object} builder 
  * @returns {[parameter]} list of random parameters for node
  */
-function randomParametersForNode(keyOrAlias, builder){
+function randomParametersForNode(key, builder){
 
     // essentially, the flow of this function can be thought of as the following:
     // loop through parent node's possible childeren (instead of a loop its a map())
     //      select random valid node for that child
-
-    // if the supplied key is an alias, pick a random key with that alias
-    // i.e. if the supplied node type is a class of nodes, pick a random node type that is a member of the class
-    const key = _t.FLIPPED_ALIAS_KEYS[keyOrAlias] ?  
-        _t.FLIPPED_ALIAS_KEYS[keyOrAlias][Math.floor( rng() * _t.FLIPPED_ALIAS_KEYS[keyOrAlias].length)]
-        : 
-        keyOrAlias;
 
     return Object.keys(_t.NODE_FIELDS[key])
     .sort( (fieldA, fieldB) => {
@@ -106,7 +100,12 @@ function randomParametersForNode(keyOrAlias, builder){
 
             const useOptionalField = rng() < 0.5;
 
-            //TODO: if a field is "excluded from builder function", return the string literal "excluded from builder function"
+            
+            if (_t.BUILDER_KEYS[key].indexOf(field) < 0) {
+                return "excluded from builder function";
+            }
+
+            
             if(_t.NODE_FIELDS[key][field].optional && !useOptionalField){
                 return null;
             }
@@ -115,7 +114,7 @@ function randomParametersForNode(keyOrAlias, builder){
                 return "valueForCustomType";
             } 
             else if (validator) {
-                return getRandomValuesFromValidator(validator, "", builder);
+                return getRandomValuesFromValidator(validator, builder);
                 /*
                 try {
                 } catch (ex) {
@@ -145,22 +144,22 @@ function randomParametersForNode(keyOrAlias, builder){
  * @param {*} nodePrefix 
  * @returns 
  */
-function getRandomValuesFromValidator(validator, nodePrefix, builder) {
+function getRandomValuesFromValidator(validator, builder) {
     if (validator === undefined) {
         return null;
     }
 
     if (validator.each) {
-        return "each";//`Array<${getRandomValuesFromValidator(validator.each, nodePrefix)}>`;
+        return "each";//`Array<${getRandomValuesFromValidator(validator.each)}>`;
     }
 
-    // use _t.FLIPPED_ALIAS_KEYS to check if node type is an alias, and pick randomly from the family of aliases
-    // may also need to use _t.PLACEHOLDERS, _t.PLACEHOLDERS_ALIAS, _t.PLACEHOLDERS_FLIPPED_ALIAS
     if (validator.chainOf) {
-        //console.log(validator.chainOf);
+        // may need to use keyOrAliasToRandomKey
+        // honestly what the fuck is the chainOf property
+        // look at what it generates in the docs I guess
 
         // assumes validator.chainOf[0].type === "array";
-        return [...Array(Math.ceil(rng() * 2)).keys()].map( _ => getRandomValuesFromValidator(validator.chainOf[1].each, nodePrefix,builder));
+        return [...Array(Math.ceil(rng() * 2)).keys()].map( _ => getRandomValuesFromValidator(validator.chainOf[1].each, builder));
     }
 
     if (validator.oneOf) {
@@ -170,14 +169,17 @@ function getRandomValuesFromValidator(validator, nodePrefix, builder) {
 
     if (validator.oneOfNodeTypes) {
 
-        console.log(validator.oneOfNodeTypes);
-
-        const randomNodeKey = validator.oneOfNodeTypes[Math.floor(rng() * validator.oneOfNodeTypes.length)];
+        // we pick a random node type from the oneOfNodeTypes list
+        // if the chosen node type is an alias, we then pick a random node type with that alias
+        const randomNodeKey = keyOrAliasToRandomKey(
+            validator.oneOfNodeTypes[Math.floor(rng() * validator.oneOfNodeTypes.length)]
+        );
 
         const nodeCreateFunc = randomNodeKey.charAt(0).toLowerCase() + randomNodeKey.slice(1);
 
+        console.log(nodeCreateFunc)
 
-        return t[nodeCreateFunc](...randomParametersForNode(randomNodeKey, builder)); 
+        return builder[nodeCreateFunc](...randomParametersForNode(randomNodeKey, builder)); 
     }
 
     if (validator.oneOfNodeOrValueTypes) {
@@ -236,4 +238,10 @@ function getRandomValuesFromValidator(validator, nodePrefix, builder) {
  */
 function isValueType(type) {
     return type.charAt(0).toLowerCase() === type.charAt(0);
+}
+
+function keyOrAliasToRandomKey(keyOrAlias){
+    return  _t.FLIPPED_ALIAS_KEYS[keyOrAlias] ?  
+            _t.FLIPPED_ALIAS_KEYS[keyOrAlias][Math.floor( rng() * _t.FLIPPED_ALIAS_KEYS[keyOrAlias].length)] : 
+            keyOrAlias;
 }
